@@ -40,6 +40,7 @@ MObject     LaplacianMeshDeformer::m_association;
 MObject     LaplacianMeshDeformer::m_handleTransformMatrix;
 MObject		LaplacianMeshDeformer::m_numSets;
 MObject     LaplacianMeshDeformer::m_handlesAdded;
+MObject     LaplacianMeshDeformer::m_recompute;
 // Declare our static members
 Eigen::SparseMatrix<double> LaplacianMeshDeformer::m_laplaceMatrix;
 Eigen::SparseMatrix<double> LaplacianMeshDeformer::m_deltaMatrix;
@@ -53,8 +54,14 @@ MStatus  	LaplacianMeshDeformer::deform(MDataBlock& 	_data, MItGeometry& 	_iter,
 	MStatus stat;
 	unsigned int i,j;
 
+
     std::cout<<"deform()"<<std::endl;
-	// Envelope data from the base class.
+
+    //if we've manualy called compute set bool to false again
+    MDataHandle recomputeHandle = _data.inputValue(m_recompute, &stat);
+    recomputeHandle.set(false);
+
+    // Envelope data from the base class.
 	// The envelope is simply a scale factor.
     MDataHandle envelopeData = _data.inputValue(envelope, &stat);
 	if (MS::kSuccess != stat) return stat;
@@ -77,32 +84,8 @@ MStatus  	LaplacianMeshDeformer::deform(MDataBlock& 	_data, MItGeometry& 	_iter,
 	MPointArray origMeshVertexArray(numVertices);
 	fnInputMesh.getPoints(origMeshVertexArray);
 
-	// allocate the memory for handlMatrix array attribute
-    /// our handles is an array/matrix of locators. Verticies have properties that tell you which locator they associate with
-    MDataHandle numSetsHandle = _data.inputValue(m_numSets, &stat);
-	unsigned int numSets = numSetsHandle.asInt();
-    MArrayDataHandle handleMatrixHandle = _data.outputArrayValue(m_handleTransformMatrix, &stat);
-	unsigned int numHandles = handleMatrixHandle.elementCount(&stat);
-//	if(numSets == 0)
-//		return MS::kSuccess;
-	if(numHandles==0)
-	{
-		MMatrix matrixTmp;
-		matrixTmp.setToIdentity();
-        MArrayDataBuilder handleMatrixArrayBuilder(&_data, m_handleTransformMatrix, numSets, &stat);
-		handleMatrixHandle.set(handleMatrixArrayBuilder);
-		for(i=0;i<numSets;i++)
-		{
-			MDataHandle eachHandleMatrixHandle = handleMatrixArrayBuilder.addElement(i, &stat);
-			eachHandleMatrixHandle.setMMatrix(matrixTmp);
-		}
-	}
 
-    // compute the deformation
-    if(numSets != numHandles){
-        std::cout<<"numSet!=NumHandles"<<std::endl;
-		return MS::kSuccess;
-    }
+
 	// 1. get the association between vertices and handle locators
     MDataHandle associationHandle = _data.inputValue(m_association, &stat);
 	MObject	associationObj = associationHandle.data();
@@ -221,11 +204,6 @@ MStatus  	LaplacianMeshDeformer::deform(MDataBlock& 	_data, MItGeometry& 	_iter,
             m_deltaMatrix.coeffRef(i,1) = delta.y;
             m_deltaMatrix.coeffRef(i,2) = delta.z;
 
-            std::cout<<"My delta "<<delta.x<<","<<delta.y<<","<<delta.z<<std::endl;
-
-			laplacianCoordArray[i] = origMeshVertexArray[i] - tmpPoint;
-            std::cout<<"His delta "<<laplacianCoordArray[i].x<<","<<laplacianCoordArray[i].y<<","<<laplacianCoordArray[i].z<<std::endl;
-
             //increment to our next vertex in our mesh
 			itOrigMeshVertex.next();
 		}
@@ -239,13 +217,17 @@ MStatus  	LaplacianMeshDeformer::deform(MDataBlock& 	_data, MItGeometry& 	_iter,
         m_laplaceMatrixInit = true;
 	}
 
-    std::cout<<"here 1"<<std::endl;
 
+    std::cout<<"Update Handles"<<std::endl;
     //----------------------------------------------------------------------
     //----------------------Update Handles if changed-----------------------
     //----------------------------------------------------------------------
 
     // Get the new tranformation matrix of handles
+    MArrayDataHandle handleMatrixHandle = _data.outputArrayValue(m_handleTransformMatrix, &stat);
+    MDataHandle numSetsHandle = _data.inputValue(m_numSets, &stat);
+    unsigned int numSets = numSetsHandle.asInt();
+
     MMatrix *newMatrix = new MMatrix[numSets];
     handleMatrixHandle = _data.inputArrayValue(m_handleTransformMatrix, &stat);
     for(i=0;i<numSets;i++)
@@ -261,7 +243,24 @@ MStatus  	LaplacianMeshDeformer::deform(MDataBlock& 	_data, MItGeometry& 	_iter,
     std::cout<<"handles Added: "<<handlesAddedHandle.asBool()<<std::endl;
     /// this is where he adds his anchors to his laplace matrix
     if(handlesAdded){
-        std::cout<<"why am I here?"<<std::endl;
+        std::cout<<"Adding Handles"<<std::endl;
+
+        // allocate the memory for handlMatrix array attribute
+        /// our handles is an array/matrix of locators. Verticies have properties that tell you which locator they associate with
+        unsigned int numHandles = handleMatrixHandle.elementCount(&stat);
+        if(numHandles==0)
+        {
+            MMatrix matrixTmp;
+            matrixTmp.setToIdentity();
+            MArrayDataBuilder handleMatrixArrayBuilder(&_data, m_handleTransformMatrix, numSets, &stat);
+            handleMatrixHandle.set(handleMatrixArrayBuilder);
+            for(i=0;i<numSets;i++)
+            {
+                MDataHandle eachHandleMatrixHandle = handleMatrixArrayBuilder.addElement(i, &stat);
+                eachHandleMatrixHandle.setMMatrix(matrixTmp);
+            }
+        }
+
         // Find our how many vertex handles we need to add
         unsigned int numFixPoints = 0;
         for(i=0;i<numVertices;i++)
@@ -274,9 +273,13 @@ MStatus  	LaplacianMeshDeformer::deform(MDataBlock& 	_data, MItGeometry& 	_iter,
         //remove any previous handles we had
         m_laplaceMatrix.conservativeResize(numVertices,numVertices);
         m_deltaMatrix.conservativeResize(numVertices,3);
+        std::cout<<"Laplace Matrix rows: "<<m_laplaceMatrix.rows()<<std::endl;
+        std::cout<<"Delta Matrix rows: "<<m_deltaMatrix.rows()<<std::endl;
         //now make room for our new vertex handles
         m_laplaceMatrix.conservativeResize(numVertices+numFixPoints,numVertices);
         m_deltaMatrix.conservativeResize(numVertices+numFixPoints,3);
+        std::cout<<"Laplace Matrix rows with handles: "<<m_laplaceMatrix.rows()<<std::endl;
+        std::cout<<"Delta Matrix rows with handles: "<<m_deltaMatrix.rows()<<std::endl;
 
         //set our new handle in our laplace matrix
         unsigned int currentRowNum = numVertices;
@@ -309,10 +312,8 @@ MStatus  	LaplacianMeshDeformer::deform(MDataBlock& 	_data, MItGeometry& 	_iter,
     //---------------------Transform our handles----------------------------
     //----------------------------------------------------------------------
 
-    std::cout<<"here 2"<<std::endl;
+    std::cout<<"Transform Delta Matrix"<<std::endl;
     if(numSets>0){
-
-        std::cout<<"why am I here?"<<std::endl;
         //update our delta matrix based on the moving handles
         unsigned int currentRowNum = numVertices;
         for(i=0;i<numVertices;i++)
@@ -328,11 +329,11 @@ MStatus  	LaplacianMeshDeformer::deform(MDataBlock& 	_data, MItGeometry& 	_iter,
         }
     }
 
-    //----------------------------------------------------------------------
-    //-----------------------Compute our deformation------------------------
-    //----------------------------------------------------------------------
+//    //----------------------------------------------------------------------
+//    //-----------------------Compute our deformation------------------------
+//    //----------------------------------------------------------------------
 
-    std::cout<<"here 3"<<std::endl;
+    std::cout<<"Compute Deformation"<<std::endl;
     // 6. compute the deformation
     /// just as he says lets compute our deformation
     Eigen::SparseMatrix<double> A(m_laplaceMatrix);
@@ -348,24 +349,24 @@ MStatus  	LaplacianMeshDeformer::deform(MDataBlock& 	_data, MItGeometry& 	_iter,
         return MS::kFailure;
     }
 
-    //----------------------------------------------------------------------
-    //---------------------Set our new postions-----------------------------
-    //----------------------------------------------------------------------
+//    //----------------------------------------------------------------------
+//    //---------------------Set our new postions-----------------------------
+//    //----------------------------------------------------------------------
 
-    std::cout<<"here 4"<<std::endl;
-	// 7. set back result
+    std::cout<<"Set Back New Points"<<std::endl;
+    // 7. set back result
     /// sets the new points of our mesh
-	MPointArray newPos(numVertices);
-	for(i=0;i<numVertices;i++)
-	{
+    MPointArray newPos(numVertices);
+    for(i=0;i<numVertices;i++)
+    {
 
         newPos[i].x = lerp(origMeshVertexArray[i].x,deformedPoints.coeff(i,0),envelopeValue);
         newPos[i].y = lerp(origMeshVertexArray[i].y,deformedPoints.coeff(i,1),envelopeValue);
         newPos[i].z = lerp(origMeshVertexArray[i].z,deformedPoints.coeff(i,2),envelopeValue);
-	}
+    }
     stat = _iter.setAllPositions(newPos);
 
-	delete [] newMatrix;
+    delete [] newMatrix;
 	return MS::kSuccess;
 }
 //----------------------------------------------------------------------------------------------------------------------
@@ -406,7 +407,7 @@ MStatus LaplacianMeshDeformer::initialize()
     MFnNumericAttribute handlesAddedAttr;
 	MStatus				stat;
 
-    /// the full name and brief name are strings that can be used in maya scripting
+    /// the full name and brief name are strings that canreturn m_handleTransformMatrix; be used in maya scripting
     /// For example you can edit them with deformerName.association
     m_localCoord = localCoordAttr.create( "localCoordinate", "locc", MFnData::kPointArray, MObject::kNullObj, &stat);
 	localCoordAttr.setHidden(true);
@@ -418,6 +419,7 @@ MStatus LaplacianMeshDeformer::initialize()
 	stat = handleMatrixAttr.setHidden(true);
     m_numSets = numSetsAttr.create("numSets", "ns",MFnNumericData::kInt, 0, &stat);
     m_handlesAdded = handlesAddedAttr.create("handlesAdded","ha",MFnNumericData::kBoolean,false,&stat);
+    m_recompute = handlesAddedAttr.create("recompute","rc",MFnNumericData::kBoolean,false,&stat);
 
 	// Add the attributes we have created to the node
     stat = addAttribute( m_localCoord );
@@ -430,6 +432,8 @@ MStatus LaplacianMeshDeformer::initialize()
 	if (!stat) { stat.perror("addAttribute"); return stat;}
     stat = addAttribute( m_handlesAdded );
     if (!stat) { stat.perror("addAttribute"); return stat;}
+    stat = addAttribute( m_recompute );
+    if (!stat) { stat.perror("addAttribute"); return stat;}
 
 	// Set up a dependency between the input and the output.  This will cause
 	// the output to be marked dirty when the input changes.  The output will
@@ -437,15 +441,9 @@ MStatus LaplacianMeshDeformer::initialize()
     // Firstly we want any changes to our handle transforms to change our mesh to deform it
     stat = attributeAffects( m_handleTransformMatrix, outputGeom );
 	if (!stat) { stat.perror("attributeAffects"); return stat;}
-    // Secondly we want any changes to our associations to be recomputed
-    // e.g. when we change which handles our vertex's are associated to
-    stat = attributeAffects( m_association, outputGeom );
+    // Secondly lets have a bool if we want to manually call deform
+    stat = attributeAffects( m_recompute, outputGeom );
     if (!stat) { stat.perror("attributeAffects"); return stat;}
-    // Thirdly any changes in our local coordiates
-    // This we mainly just be called when setting up the node
-    stat = attributeAffects( m_localCoord, outputGeom );
-    if (!stat) { stat.perror("attributeAffects"); return stat;}
-
 
 
 	return MS::kSuccess;
