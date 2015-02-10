@@ -219,6 +219,7 @@ proc addLocator(){
 	$tmpPos = $handleCentre[$i];
 	$handleTmp = `spaceLocator`;
 	move ($tmpPos.x) ($tmpPos.y) ($tmpPos.z);
+	performFreezeTransformations(0);
 	parent -relative $handleTmp $parentNodeName;
 	$handleLocator[$i] = $handleTmp[0];
 	connectAttr ($handleLocator[$i] + ".matrix") ($deformerNodeName + ".handleMatrix[" + $i + "]");
@@ -245,7 +246,6 @@ proc addHandle(){
             $numSets = size($setsList);
             
             updateAssociation();
-            setLocalCoords();
             addLocator();
             setAttr ($deformerNodeName + ".numSets") $numSets;
             setAttr ($deformerNodeName + ".handlesAdded") true;
