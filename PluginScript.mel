@@ -57,6 +57,8 @@ proc setDeformGeom(){
     global string $selectedMesh;
     global int $deformInit;
     global int $association[];
+    global string $deformedShapeNodeName;
+    global string $deformerNodeName;
     // get our selected geometry
     string $selected[] = `ls -sl`;
     //Make sure we have something in our array
@@ -68,15 +70,25 @@ proc setDeformGeom(){
         global int $numSets;
         global string $deformedShapeNodeName;
         global string $deformerNodeName;
-        
+        global int $association[];
+        global string $setsList[];
+        global vector $handleCentre[];
+        global string $handleLocator[];
         global string $shapeNodeName;
         $shapeNodeName = getShapeNodeFromSelection();
         global string $parentNodeName;
         $parentNodeName = getParent($shapeNodeName);
         
+        //init our global variables to 0;
+        $numSets = 0;
+        clear($association);
+        clear($setsList);
+        clear($handleCentre);
+        clear($handleLocator);
+        
         deformer -type LaplacianMeshDeformer;
-        string $deformedShapeNodeName = getShapeNodeFromSelection();
-        string $deformerNodeName = findDeformerNode($deformedShapeNodeName);
+        $deformedShapeNodeName = getShapeNodeFromSelection();
+        $deformerNodeName = findDeformerNode($deformedShapeNodeName);
         setAttr ($deformerNodeName + ".numSets") $numSets;
         //create our association matrix and set the deformer node attribute
         updateAssociation();
@@ -99,13 +111,14 @@ proc setLocalCoords(){
     global int $association[];
     global vector $handleCentre[];
     global string $selectedMesh;
-    global string  $deformedShapeNodeName;
+    global string $shapeNodeName;
+    global string $deformerNodeName;
         //get our total num of vertex's
     int $numVerticesA[] = `polyEvaluate -vertex $selectedMesh`;
     int $numVertices = $numVerticesA[0];
     for($i=0;$i<$numVertices;$i++)
     {
-    	$localPos = `xform -q -t -objectSpace ($deformedShapeNodeName + ".vtx["+$i+"]")`;
+    	$localPos = `xform -q -t -objectSpace ($shapeNodeName + ".vtx["+$i+"]")`;
     	if($association[$i]!= -1)
     	{
     		$localPos = $localPos - $handleCentre[$association[$i]];
@@ -200,6 +213,7 @@ proc addLocator(){
 	}
 	$handleCentre[$i]/=$numVerticesInSet;
 	
+	print($handleCentre[$i]);
     // create locators at the middle of each sets, link locator's world matrix to deformer
     // add a locator in the center of our set and connect its tranform attribute to our deformer handleMatrix
 	$tmpPos = $handleCentre[$i];
@@ -229,7 +243,9 @@ proc addHandle(){
             global int $numSets;
             $setsList[size($setsList)] = $newSet;
             $numSets = size($setsList);
+            
             updateAssociation();
+            setLocalCoords();
             addLocator();
             setAttr ($deformerNodeName + ".numSets") $numSets;
             setAttr ($deformerNodeName + ".handlesAdded") true;

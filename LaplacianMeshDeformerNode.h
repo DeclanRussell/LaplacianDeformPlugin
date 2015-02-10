@@ -106,19 +106,6 @@ public:
     //----------------------------------------------------------------------------------------------------------------------
     static	MTypeId m_id;
     //----------------------------------------------------------------------------------------------------------------------
-    /// @brief Eigen sparse matrix for our laplacian matrix. Sparse matricies very good for large meshes!
-    //----------------------------------------------------------------------------------------------------------------------
-    static Eigen::SparseMatrix<double> m_laplaceMatrix;
-    //----------------------------------------------------------------------------------------------------------------------
-    /// @brief Eigen sparse matrix for our delta matrix
-    /// @todo Not use sparse matix for this matrix as it will give you a performance hit
-    //----------------------------------------------------------------------------------------------------------------------
-    static Eigen::SparseMatrix<double> m_deltaMatrix;
-    //----------------------------------------------------------------------------------------------------------------------
-    /// @brief a bool to declare if our laplace matrix has been created yet
-    //----------------------------------------------------------------------------------------------------------------------
-    static bool m_laplaceMatrixInit;
-    //----------------------------------------------------------------------------------------------------------------------
     /// @brief a member to declare if our handle have added and need updating
     //----------------------------------------------------------------------------------------------------------------------
     static MObject m_handlesAdded;
@@ -126,6 +113,15 @@ public:
     /// @brief a member used to to manually call our deformation, if changed the node will be marked dirty and call deform
     //----------------------------------------------------------------------------------------------------------------------
     static MObject m_recompute;
+    //----------------------------------------------------------------------------------------------------------------------
+    /// @brief Eigen sparse matrix for our laplacian matrix. Sparse matricies very good for large meshes!
+    //----------------------------------------------------------------------------------------------------------------------
+    Eigen::SparseMatrix<double> m_laplaceMatrix;
+    //----------------------------------------------------------------------------------------------------------------------
+    /// @brief Eigen sparse matrix for our delta matrix
+    /// @todo Not use sparse matix for this matrix as it will give you a performance hit
+    //----------------------------------------------------------------------------------------------------------------------
+    Eigen::SparseMatrix<double> m_deltaMatrix;
     //----------------------------------------------------------------------------------------------------------------------
 
 };
