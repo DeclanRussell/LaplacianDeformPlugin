@@ -14,6 +14,7 @@
 #include <maya/MFnNumericAttribute.h>
 #include <maya/MTypeId.h> 
 #include <eigen3/Eigen/Sparse>
+#include <eigen3/Eigen/Dense>
 
  
 class LaplacianMeshDeformer : public MPxDeformerNode
@@ -118,10 +119,14 @@ public:
     //----------------------------------------------------------------------------------------------------------------------
     Eigen::SparseMatrix<double> m_laplaceMatrix;
     //----------------------------------------------------------------------------------------------------------------------
+    /// @brief the transpose of our laplace matrix.
+    //----------------------------------------------------------------------------------------------------------------------
+    Eigen::SparseMatrix<double> m_laplaceTransMatrix;
+    //----------------------------------------------------------------------------------------------------------------------
     /// @brief Eigen sparse matrix for our delta matrix
     /// @todo Not use sparse matix for this matrix as it will give you a performance hit
     //----------------------------------------------------------------------------------------------------------------------
-    Eigen::SparseMatrix<double> m_deltaMatrix;
+    Eigen::Matrix<double,Eigen::Dynamic,Eigen::Dynamic> m_deltaMatrix;
     //----------------------------------------------------------------------------------------------------------------------
 
 };

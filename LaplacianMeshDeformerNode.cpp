@@ -124,14 +124,11 @@ MStatus  	LaplacianMeshDeformer::deform(MDataBlock& 	_data, MItGeometry& 	_iter,
     // Check to see if our matricies have been created
     if(m_laplaceMatrix.nonZeros()==0)
 	{
-        std::cout<<"Creating Matrixcies"<<std::endl;
 		itOrigMeshVertex.reset();
         /// This is where he creates his Laplace matrix. Also add's the anchors apparently
         m_laplaceMatrix.resize(numVertices, numVertices);
         m_laplaceMatrix.setIdentity();
-
         m_deltaMatrix.resize(numVertices,3);
-        m_deltaMatrix.setZero();
         MPoint delta;
 
 		for(i=0;i<numVertices;i++)
@@ -140,8 +137,6 @@ MStatus  	LaplacianMeshDeformer::deform(MDataBlock& 	_data, MItGeometry& 	_iter,
             //Get our ring of neighbours around our vertex
             stat = itOrigMeshVertex.getConnectedVertices(oneRingNeighbours);
             numNeighbours = oneRingNeighbours.length();
-            //The diagonal of our matrix will always be 1
-            m_laplaceMatrix.coeffRef(i,i)=1.0;
             //set our weighted sum to 0
             tmpPoint.x = tmpPoint.y = tmpPoint.z = 0.0;
             for(j=0;j<numNeighbours;j++){
@@ -149,15 +144,12 @@ MStatus  	LaplacianMeshDeformer::deform(MDataBlock& 	_data, MItGeometry& 	_iter,
                 //calculate weighting
                 tmpPoint += origMeshVertexArray[oneRingNeighbours[j]];
                 m_laplaceMatrix.coeffRef(i,oneRingNeighbours[j]) = -1.0/numNeighbours;
-                std::cout<<"laplace pos "<<i<<","<<oneRingNeighbours[j]<<std::endl;
             }
 
             // calculate our final delta and add it to our delta matrix
             // lets try with his weighting
             tmpPoint = tmpPoint/numNeighbours;
             delta = origMeshVertexArray[i] - tmpPoint;
-
-            std::cout<<"delta is "<<delta.x<<","<<delta.y<<","<<delta.z<<","<<std::endl;
             m_deltaMatrix.coeffRef(i,0) = delta.x;
             m_deltaMatrix.coeffRef(i,1) = delta.y;
             m_deltaMatrix.coeffRef(i,2) = delta.z;
@@ -165,12 +157,11 @@ MStatus  	LaplacianMeshDeformer::deform(MDataBlock& 	_data, MItGeometry& 	_iter,
             //increment to our next vertex in our mesh
 			itOrigMeshVertex.next();
 		}
-        // declare that we have made our laplace matrix so we dont recalcuate it
-        std::cout<<"Congratulations! Laplacian Matrix has been created"<<std::endl;
-        std::cout<<"Laplace matrix is of size "<<m_laplaceMatrix.rows()<<","<<m_laplaceMatrix.cols()<<std::endl;
-        std::cout<<"Delta matrix is of size "<<m_deltaMatrix.rows()<<","<<m_deltaMatrix.cols()<<std::endl;
-        //std::cout<<"It looks something like this:"<<std::endl;
-        //std::cout<<m_laplaceMatrix<<std::endl;
+        //Create our transpose laplace so that we dont have to do it when we solve.
+        //Dont want to waste any computation time in doing it every update
+        m_laplaceTransMatrix = m_laplaceMatrix.transpose();
+
+        std::cout<<"Laplace and delta matrix created"<<std::endl;
     }
 
 
@@ -198,11 +189,8 @@ MStatus  	LaplacianMeshDeformer::deform(MDataBlock& 	_data, MItGeometry& 	_iter,
     //if our handles have changed then lets update them
     MDataHandle handlesAddedHandle = _data.inputValue(m_handlesAdded, &stat);
     bool handlesAdded = handlesAddedHandle.asBool();
-    std::cout<<"handles Added: "<<handlesAddedHandle.asBool()<<std::endl;
     /// this is where he adds his anchors to his laplace matrix
     if(handlesAdded){
-        std::cout<<"Adding Handles"<<std::endl;
-
         // allocate the memory for handlMatrix array attribute
         /// our handles is an array/matrix of locators. Verticies have properties that tell you which locator they associate with
         unsigned int numHandles = handleMatrixHandle.elementCount(&stat);
@@ -231,13 +219,9 @@ MStatus  	LaplacianMeshDeformer::deform(MDataBlock& 	_data, MItGeometry& 	_iter,
         //remove any previous handles we had
         m_laplaceMatrix.conservativeResize(numVertices,numVertices);
         m_deltaMatrix.conservativeResize(numVertices,3);
-        std::cout<<"Laplace Matrix rows: "<<m_laplaceMatrix.rows()<<std::endl;
-        std::cout<<"Delta Matrix rows: "<<m_deltaMatrix.rows()<<std::endl;
         //now make room for our new vertex handles
         m_laplaceMatrix.conservativeResize(numVertices+numFixPoints,numVertices);
         m_deltaMatrix.conservativeResize(numVertices+numFixPoints,3);
-        std::cout<<"Laplace Matrix rows with handles: "<<m_laplaceMatrix.rows()<<std::endl;
-        std::cout<<"Delta Matrix rows with handles: "<<m_deltaMatrix.rows()<<std::endl;
 
         //set our new handle in our laplace matrix
         unsigned int currentRowNum = numVertices;
@@ -249,6 +233,10 @@ MStatus  	LaplacianMeshDeformer::deform(MDataBlock& 	_data, MItGeometry& 	_iter,
                 currentRowNum++;
             }
         }
+
+        //Create our transpose laplace so that we dont have to do it when we solve.
+        //Dont want to waste any computation time in doing it every update
+        m_laplaceTransMatrix = m_laplaceMatrix.transpose();
 
         // set our new delta values based on the transorm of our handle
         currentRowNum = numVertices;
@@ -291,34 +279,19 @@ MStatus  	LaplacianMeshDeformer::deform(MDataBlock& 	_data, MItGeometry& 	_iter,
     //-----------------------Compute our deformation------------------------
     //----------------------------------------------------------------------
 
-    //if we haven't added any handles then lets skip this bit as its just wasted time
-    if(numSets==0)
-        return MS::kSuccess;
-
-    std::cout<<"Compute Deformation"<<std::endl;
-
+    //if we haven't added any handles then we dont need (and cant) solve for new points
+    if(numSets==0) return MS::kSuccess;
 
     // 6. compute the deformation
     /// just as he says lets compute our deformation
-    Eigen::SparseMatrix<double> A(m_laplaceMatrix);
-    Eigen::SparseMatrix<double> b(m_deltaMatrix);
-    //now lets solve it
-    Eigen::SparseMatrix<double> At = A.transpose();
-    Eigen::SparseMatrix<double> AtA = At * A;
-    Eigen::SparseMatrix<double> Atb = At * b;
+    Eigen::SparseMatrix<double> AtA = m_laplaceTransMatrix * m_laplaceMatrix;
+    Eigen::Matrix<double,Eigen::Dynamic,Eigen::Dynamic> Atb = m_laplaceTransMatrix * m_deltaMatrix;
     Eigen::SimplicialCholesky<Eigen::SparseMatrix<double>, Eigen::Upper > solver(AtA);
-
-    Eigen::SparseMatrix<double> deformedPoints = solver.solve(Atb);
-
-
-    std::cout<<"deformed points size "<<deformedPoints.rows()<<","<<deformedPoints.cols()<<std::endl;
+    Eigen::Matrix<double,Eigen::Dynamic,Eigen::Dynamic> deformedPoints = solver.solve(Atb);
     if(solver.info()!=Eigen::Success){
         stat.perror("ERROR: Something when wrong with the solver. Soz about that :( <3");
         return MS::kFailure;
     }
-
-    std::cout<<"A matrix is of size "<<A.rows()<<","<<A.cols()<<std::endl;
-    std::cout<<"b matrix is of size "<<b.rows()<<","<<b.cols()<<std::endl;
 
     //----------------------------------------------------------------------
     //---------------------Set our new postions-----------------------------
@@ -333,8 +306,6 @@ MStatus  	LaplacianMeshDeformer::deform(MDataBlock& 	_data, MItGeometry& 	_iter,
         newPos[i].x = lerp(origMeshVertexArray[i].x,deformedPoints.coeff(i,0),envelopeValue);
         newPos[i].y = lerp(origMeshVertexArray[i].y,deformedPoints.coeff(i,1),envelopeValue);
         newPos[i].z = lerp(origMeshVertexArray[i].z,deformedPoints.coeff(i,2),envelopeValue);
-        std::cout<<"Original points "<<origMeshVertexArray[i].x<<","<<origMeshVertexArray[i].y<<","<<origMeshVertexArray[i].z<<","<<std::endl;
-        std::cout<<"Deformed points "<<deformedPoints.coeff(i,0)<<","<<deformedPoints.coeff(i,1)<<","<<deformedPoints.coeff(i,2)<<","<<std::endl;
     }
     stat = _iter.setAllPositions(newPos);
 
