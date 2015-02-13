@@ -15,7 +15,6 @@ global int $numSets=0;
 global int $association[];
 global string $deformedShapeNodeName;
 global string $deformerNodeName;
-global vector $handleCentre[];
 global string $handleLocator[];
 global string $shapeNodeName;
 global string $parentNodeName;
@@ -109,19 +108,21 @@ proc setLocalCoords(){
     vector $localPos;
     string $localPosString = "";
     global int $association[];
-    global vector $handleCentre[];
+    global string $handleLocator[];
     global string $selectedMesh;
     global string $shapeNodeName;
     global string $deformerNodeName;
         //get our total num of vertex's
     int $numVerticesA[] = `polyEvaluate -vertex $selectedMesh`;
     int $numVertices = $numVerticesA[0];
+    vector $handlePos;
     for($i=0;$i<$numVertices;$i++)
     {
     	$localPos = `xform -q -t -objectSpace ($shapeNodeName + ".vtx["+$i+"]")`;
     	if($association[$i]!= -1)
     	{
-    		$localPos = $localPos - $handleCentre[$association[$i]];
+    	    $handlePos = `xform -q -t -objectSpace $handleLocator[$association[$i]]`;
+    		$localPos = $localPos - $handlePos;
     	}
     	$localPosString += " " + ($localPos.x) + " " + ($localPos.y) +" " + ($localPos.z) + " 1 ";
     }
@@ -193,35 +194,37 @@ proc addLocator(){
     int $numVerticesA[] = `polyEvaluate -vertex $selectedMesh`;
     int $numVertices = $numVerticesA[0];
     // create Handle for each set, find the handle positions
-    global vector $handleCentre[];
+    vector $handleCentre;
     vector $tmpPos;
     global string $handleLocator[];
     string $handleTmp[];
 
     //get the postion to add the locator
-    int $i = size($handleCentre);
-	$handleCentre[$i] = <<0.0, 0.0, 0.0>>;
+    int $i = size($handleLocator);
+	$handleCentre = <<0.0, 0.0, 0.0>>;
 	int $numVerticesInSet = 0;
 	for($j=0;$j<$numVertices;$j++)
 	{
 		if($association[$j] == $i)
 		{
 			$tmpPos = `xform -q -t -objectSpace ($deformedShapeNodeName + ".vtx["+$j+"]")`;
-			$handleCentre[$i] +=$tmpPos;
+			$handleCentre+=$tmpPos;
 			$numVerticesInSet++;
 		}
 	}
-	$handleCentre[$i]/=$numVerticesInSet;
+	$handleCentre/=$numVerticesInSet;
 	
-	print($handleCentre[$i]);
+	print($handleCentre);
     // create locators at the middle of each sets, link locator's world matrix to deformer
     // add a locator in the center of our set and connect its tranform attribute to our deformer handleMatrix
-	$tmpPos = $handleCentre[$i];
+	$tmpPos = $handleCentre;
 	$handleTmp = `spaceLocator`;
 	move ($tmpPos.x) ($tmpPos.y) ($tmpPos.z);
 	performFreezeTransformations(0);
 	parent -relative $handleTmp $parentNodeName;
 	$handleLocator[$i] = $handleTmp[0];
+	//update the local coodinates of our mesh to take into count our handles
+	setLocalCoords();
 	connectAttr ($handleLocator[$i] + ".matrix") ($deformerNodeName + ".handleMatrix[" + $i + "]");
 
 }
@@ -266,11 +269,9 @@ window -title "Laplacian Mesh Deformer" -width 500 -height 500 -sizeable false;
     //create set our layout
     columnLayout;
         print("current set " + $currentSetNum);
-        //Now loets add our buttons
+        //Now lets add our buttons
         button -label "Set Geomtry" -width 500 -command "setDeformGeom";
-        button -label "Add Anchor" -width 500 -command "selectVerts";
-        button -label "Set Anchor" -width 500 -command "addHandle";
-        button -label "Add Handle" -width 500 -command "selectVerts";
-        button -label "Set Handle" -width 500 -command "addHandle";
+        button -label "Paint Vertex Tool" -width 500 -command "selectVerts";
+        button -label "Add Handle" -width 500 -command "addHandle";
         
 showWindow;
