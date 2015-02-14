@@ -7,6 +7,7 @@
 # first lets remove Qt core and gui not going to need it
 ####################################################################################
 QT       -= core gui
+OBJECTS_DIR = obj
 ####################################################################################
 # This is the name of the plugin / final lib file
 ####################################################################################
@@ -15,8 +16,9 @@ macx:TARGET=LaplacianMeshDeformer.bundle
 ####################################################################################
 # here we add the source files (and headers if required)
 ####################################################################################
-SOURCES+=LaplacianMeshDeformerNode.cpp pluginMain.cpp
-HEADERS+= LaplacianMeshDeformerNode.h
+SOURCES+=src/LaplacianMeshDeformerNode.cpp src/pluginMain.cpp
+HEADERS+= include/LaplacianMeshDeformerNode.h
+INCLUDEPATH+= include/
 # these are defines required by Maya to re-define some C++
 # stuff, we will add some more later to tell what platform
 # we are on as well
