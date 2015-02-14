@@ -33,8 +33,7 @@
 //
 MTypeId     LaplacianMeshDeformer::m_id( 0x090001 );
 
-// Example attributes
-// 
+// The attributes of our node.
 MObject		LaplacianMeshDeformer::m_localCoord;
 MObject     LaplacianMeshDeformer::m_association;
 MObject     LaplacianMeshDeformer::m_handleTransformMatrix;
@@ -51,28 +50,23 @@ MStatus  	LaplacianMeshDeformer::deform(MDataBlock& 	_data, MItGeometry& 	_iter,
 	unsigned int i,j;
 
 
-    std::cout<<"deform()"<<std::endl;
-
     //if we've manualy called compute set bool to false again
     MDataHandle recomputeHandle = _data.inputValue(m_recompute, &stat);
     recomputeHandle.set(false);
 
     // Envelope data from the base class.
-	// The envelope is simply a scale factor.
+    // The envelope is simply a scale factor.
     MDataHandle envelopeData = _data.inputValue(envelope, &stat);
 	if (MS::kSuccess != stat) return stat;
 	float envelopeValue = envelopeData.asFloat();	
 
-	// get the undeformed mesh, this is used for envelope only, if the envelop is 1.0, then this is not necessary, the output geometry will be only affected by the cage and its weight
-    /// not sure if this is actually used at all if this is for the envelop as the envelop deosn't actually do anything. maybe he forgot to impliment it?
-    /// input = Some kind of input attribute inherited from MPxDeformationNode
-    MArrayDataHandle inputMeshHandle = _data.inputArrayValue( input, &stat );
-	inputMeshHandle.jumpToElement(0);
-    /// @brief this is like an array of our input selected geometry. It has children which are the mesh handles
-	MDataHandle inputMeshElementHandle = inputMeshHandle.inputValue(&stat);
 
-    /// ok this is our imput mesh, imputMeshObj is our mesh object which we can use to get our verts from.
-    /// inputGeom = the input geomtry. This static member is inherited from MPxDeformerNode
+    // This is our imput mesh, imputMeshObj is our mesh object which we can use to get our verts from.
+    // inputGeom = the input geomtry. This static member is inherited from MPxDeformerNode
+    MArrayDataHandle inputMeshHandle = _data.inputArrayValue( input, &stat );
+    inputMeshHandle.jumpToElement(0);
+    // This is like an array of our input selected geometry. It has children which are the mesh handles
+    MDataHandle inputMeshElementHandle = inputMeshHandle.inputValue(&stat);
 	MDataHandle inputMeshGeomHandle = inputMeshElementHandle.child(inputGeom);
 	MObject inputMeshObj = inputMeshGeomHandle.data();
 	MFnMesh fnInputMesh(inputMeshObj, &stat);
@@ -82,15 +76,12 @@ MStatus  	LaplacianMeshDeformer::deform(MDataBlock& 	_data, MItGeometry& 	_iter,
 
 
 
-	// 1. get the association between vertices and handle locators
+    // Get the association between vertices and handle locators
     MDataHandle associationHandle = _data.inputValue(m_association, &stat);
 	MObject	associationObj = associationHandle.data();
     if(associationObj.isNull()){
-        std::cout<<"associationObj.isNull()"<<std::endl;
+        MGlobal::displayWarning("Association Not Set");
         return MS::kSuccess;
-    }
-    else{
-        std::cout<<"associations set"<<std::endl;
     }
 	MFnIntArrayData fnAssociation(associationObj, &stat);
 	MIntArray assoArray = fnAssociation.array(&stat);  // *******************
@@ -99,11 +90,8 @@ MStatus  	LaplacianMeshDeformer::deform(MDataBlock& 	_data, MItGeometry& 	_iter,
     MDataHandle localCoordHandle = _data.inputValue(m_localCoord, &stat);
 	MObject localCoordObj = localCoordHandle.data();
     if(localCoordObj.isNull()){
-        std::cout<<"localCoordObj.isNull()"<<std::endl;
+        MGlobal::displayWarning("Local Coordinates not set");
         return MS::kSuccess;
-    }
-    else{
-        std::cout<<"Local coordinates set"<<std::endl;
     }
 	MFnPointArrayData fnLocalCoord(localCoordObj, &stat);
 	MPointArray localCoordArray = fnLocalCoord.array(&stat);   // *******************
@@ -114,8 +102,6 @@ MStatus  	LaplacianMeshDeformer::deform(MDataBlock& 	_data, MItGeometry& 	_iter,
     //-----------------Create our laplace and delta matrix------------------
     //----------------------------------------------------------------------
 
-    std::cout<<"here"<<std::endl;
-	// 5. compute the laplacian coordinates
     // Check to see if our matricies have been created
     MPoint	tmpPoint;
     if(m_laplaceMatrix.nonZeros()==0)
@@ -144,7 +130,6 @@ MStatus  	LaplacianMeshDeformer::deform(MDataBlock& 	_data, MItGeometry& 	_iter,
             //set our weighted sum to 0
             tmpPoint.x = tmpPoint.y = tmpPoint.z = 0.0;
             weightSum = 0.0;
-            std::cout<<"vertexId : "<<i<<std::endl;
             for(j=0;j<numNeighbours;j++){
 
                 //calculate out cotangent weights
@@ -163,20 +148,19 @@ MStatus  	LaplacianMeshDeformer::deform(MDataBlock& 	_data, MItGeometry& 	_iter,
                 e2 = origMeshVertexArray[i] - origMeshVertexArray[oneRingNeighbours[prevN]];
                 beta = acos((e1*e2)/(e1.length() * e2.length()));
 
-                std::cout<<"alpha: "<<alpha * 180.0/3.14159265<<" beta: "<<beta * 180.0/3.14159265<<std::endl;
                 //calculate our final weight of the neighbour vertex
                 weight =((1.0/tan(alpha)) + (1.0/tan(beta))) / 2.0;
-                weight/=(double)numNeighbours;
                 m_laplaceMatrix.coeffRef(i,oneRingNeighbours[j]) = -weight;
-                std::cout<<"weight calculated is "<<-weight<<std::endl;
                 tmpPoint += origMeshVertexArray[oneRingNeighbours[j]] * weight;
                 weightSum+=weight;
             }
-            std::cout<<"weighted sum "<<weightSum<<std::endl;
+            for(j=0;j<numNeighbours;j++){
+                m_laplaceMatrix.coeffRef(i,oneRingNeighbours[j])/=weightSum;
+            }
             // calculate our final delta and add it to our delta matrix
+            tmpPoint = tmpPoint/weightSum;
             delta = origMeshVertexArray[i] - tmpPoint;
-            std::cout<<"delta is "<<delta<<std::endl;
-            std::cout<<std::endl;
+
             m_deltaMatrix.coeffRef(i,0) = delta.x;
             m_deltaMatrix.coeffRef(i,1) = delta.y;
             m_deltaMatrix.coeffRef(i,2) = delta.z;
@@ -188,13 +172,10 @@ MStatus  	LaplacianMeshDeformer::deform(MDataBlock& 	_data, MItGeometry& 	_iter,
         //Dont want to waste any computation time in doing it every update
         m_laplaceTransMatrix = m_laplaceMatrix.transpose();
 
-        std::cout<<"Laplace and delta matrix created"<<std::endl;
+        MGlobal::displayInfo("Laplace and delta matrix created");
     }
 
 
-
-
-    std::cout<<"Update Handles"<<std::endl;
     //----------------------------------------------------------------------
     //----------------------Update Handles if changed-----------------------
     //----------------------------------------------------------------------
@@ -218,8 +199,8 @@ MStatus  	LaplacianMeshDeformer::deform(MDataBlock& 	_data, MItGeometry& 	_iter,
     bool handlesAdded = handlesAddedHandle.asBool();
     /// this is where he adds his anchors to his laplace matrix
     if(handlesAdded){
+        MGlobal::displayInfo("Adding Handles");
         // allocate the memory for handlMatrix array attribute
-        /// our handles is an array/matrix of locators. Verticies have properties that tell you which locator they associate with
         unsigned int numHandles = handleMatrixHandle.elementCount(&stat);
         if(numHandles==0)
         {
@@ -279,13 +260,12 @@ MStatus  	LaplacianMeshDeformer::deform(MDataBlock& 	_data, MItGeometry& 	_iter,
             }
         }
         handlesAddedHandle.set(false);
+        MGlobal::displayInfo("Handles Added");
     }
 
     //----------------------------------------------------------------------
     //---------------------Transform our handles----------------------------
     //----------------------------------------------------------------------
-
-    std::cout<<"Transform Delta Matrix"<<std::endl;
     if(numSets>0){
         //update our delta matrix based on the moving handles
         unsigned int currentRowNum = numVertices;
@@ -309,8 +289,7 @@ MStatus  	LaplacianMeshDeformer::deform(MDataBlock& 	_data, MItGeometry& 	_iter,
     //if we haven't added any handles then we dont need (and cant) solve for new points
     if(numSets==0) return MS::kSuccess;
 
-    // 6. compute the deformation
-    /// just as he says lets compute our deformation
+    // Compute the deformation
     Eigen::SparseMatrix<double> AtA = m_laplaceTransMatrix * m_laplaceMatrix;
     Eigen::Matrix<double,Eigen::Dynamic,Eigen::Dynamic> Atb = m_laplaceTransMatrix * m_deltaMatrix;
     Eigen::SimplicialCholesky<Eigen::SparseMatrix<double>, Eigen::Upper > solver(AtA);
@@ -324,9 +303,7 @@ MStatus  	LaplacianMeshDeformer::deform(MDataBlock& 	_data, MItGeometry& 	_iter,
     //---------------------Set our new postions-----------------------------
     //----------------------------------------------------------------------
 
-    std::cout<<"Set Back New Points"<<std::endl;
-    // 7. set back result
-    /// sets the new points of our mesh
+    // set the new points of our mesh
     MPointArray newPos(numVertices);
     for(i=0;i<numVertices;i++)
     {
@@ -413,7 +390,7 @@ MStatus LaplacianMeshDeformer::initialize()
     stat = attributeAffects( m_recompute, outputGeom );
     if (!stat) { stat.perror("attributeAffects"); return stat;}
 
-
+    MGlobal::displayInfo("Laplacian Deformer Node created");
 	return MS::kSuccess;
 }
 

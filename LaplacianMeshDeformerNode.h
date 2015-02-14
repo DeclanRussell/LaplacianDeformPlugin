@@ -6,9 +6,6 @@
 /// @date 05/02/2015
 /// @brief This is a deformer node that computes laplacian mesh editing upon a mesh to be used with Maya
 /// @version 1.0
-/// @todo in the deform function when you calculate your neighbour weights the cotangent weights are calculated incorrectly
-/// @todo At the moment you are using mean value coordinates you should fix the cotangent weights as they are better
-
 
 #include <maya/MPxDeformerNode.h>
 #include <maya/MFnNumericAttribute.h>

@@ -11,6 +11,7 @@ QT       -= core gui
 # This is the name of the plugin / final lib file
 ####################################################################################
 TARGET = LaplacianMeshDeformer
+macx:TARGET=LaplacianMeshDeformer.bundle
 ####################################################################################
 # here we add the source files (and headers if required)
 ####################################################################################
@@ -21,6 +22,8 @@ HEADERS+= LaplacianMeshDeformerNode.h
 # we are on as well
 DEFINES+=REQUIRE_IOSTREAM \
          _BOOL
+macx:DEFINES+=OSMac_
+macx:CONFIG -= app_bundle
 ####################################################################################
 # These are the maya libs we need to link to, this will change depending
 # upon which maya framework we use, just add them to the end of
@@ -58,11 +61,11 @@ MAYALIBS=-lOpenMaya \
 # now tell linux we need to build a lib
 ####################################################################################
 linux-g++*:TEMPLATE = lib
-
 ####################################################################################
 # this tells qmake where maya is
 ####################################################################################
 linux-g++*:MAYALOCATION=/opt/autodesk/maya/
+macx:MAYALOCATION=/Applications/Autodesk/maya2011
 ####################################################################################
 # under linux we need to use the version of g++ used to build maya
 # in this case g++412
@@ -73,11 +76,20 @@ linux-g++*:MAYALOCATION=/opt/autodesk/maya/
 ####################################################################################
 linux-g++*:INCLUDEPATH += $$MAYALOCATION/include \
                         /usr/X11R6/include
+macx:INCLUDEPATH+=$$MAYALOCATION/devkit/include
 ####################################################################################
 # set which libs we need to include
 ####################################################################################
 linux-g++*:LIBS += -L$$MAYALOCATION/lib \
                    $$MAYALIBS
+# under mac we need to build a bundle, to do this use
+# the -bundle flag but we also need to not use -dynamic lib so
+# remove this
+macx:LIBS +=-bundle
+mac:LIBS -=-dynamiclib
+
+macx:LIBS += -L$$MAYALOCATION/Maya.app/Contents/MacOS \
+             $$MAYALIBS
 ####################################################################################
 # tell maya we're building for linux
 ####################################################################################
