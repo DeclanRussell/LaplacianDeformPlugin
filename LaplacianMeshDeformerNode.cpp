@@ -116,14 +116,14 @@ MStatus  	LaplacianMeshDeformer::deform(MDataBlock& 	_data, MItGeometry& 	_iter,
 
     std::cout<<"here"<<std::endl;
 	// 5. compute the laplacian coordinates
-    /// this laplacian Coord Array is what he uses to store his delta values;
-	MIntArray	oneRingNeighbours;
-	MItMeshVertex itOrigMeshVertex(inputMeshObj);
-    MPoint	tmpPoint;
-	unsigned int numNeighbours;
     // Check to see if our matricies have been created
+    MPoint	tmpPoint;
     if(m_laplaceMatrix.nonZeros()==0)
 	{
+        /// this laplacian Coord Array is what he uses to store his delta values;
+        MIntArray	oneRingNeighbours;
+        MItMeshVertex itOrigMeshVertex(inputMeshObj);
+        unsigned int numNeighbours;
 		itOrigMeshVertex.reset();
         /// This is where he creates his Laplace matrix. Also add's the anchors apparently
         m_laplaceMatrix.resize(numVertices, numVertices);
@@ -131,7 +131,11 @@ MStatus  	LaplacianMeshDeformer::deform(MDataBlock& 	_data, MItGeometry& 	_iter,
         m_deltaMatrix.resize(numVertices,3);
         MPoint delta;
 
-		for(i=0;i<numVertices;i++)
+        int prevN, nextN;
+        MVector e1,e2;
+        double alpha,beta,weight,weightSum;
+
+        for(i=0;i<numVertices;i++)
 		{
             //Lets add our information to our laplace matrix
             //Get our ring of neighbours around our vertex
@@ -139,17 +143,40 @@ MStatus  	LaplacianMeshDeformer::deform(MDataBlock& 	_data, MItGeometry& 	_iter,
             numNeighbours = oneRingNeighbours.length();
             //set our weighted sum to 0
             tmpPoint.x = tmpPoint.y = tmpPoint.z = 0.0;
+            weightSum = 0.0;
+            std::cout<<"vertexId : "<<i<<std::endl;
             for(j=0;j<numNeighbours;j++){
 
-                //calculate weighting
-                tmpPoint += origMeshVertexArray[oneRingNeighbours[j]];
-                m_laplaceMatrix.coeffRef(i,oneRingNeighbours[j]) = -1.0/numNeighbours;
-            }
+                //calculate out cotangent weights
+                //cotangent weights better preserve the shape of our mesh when deformed
+                //get our previous and next neightbours
+                (j==0) ? prevN = numNeighbours-1 : prevN = j-1;
+                (j==numNeighbours-1) ? nextN = 0 : nextN = j+1;
 
+                //calculate our alpha angle
+                e1 = origMeshVertexArray[oneRingNeighbours[j]] - origMeshVertexArray[oneRingNeighbours[nextN]];
+                e2 = origMeshVertexArray[i] - origMeshVertexArray[oneRingNeighbours[nextN]];
+                alpha = acos((e1*e2)/(e1.length() * e2.length()));
+
+                //calculate our beta angle
+                e1 = origMeshVertexArray[oneRingNeighbours[j]] - origMeshVertexArray[oneRingNeighbours[prevN]];
+                e2 = origMeshVertexArray[i] - origMeshVertexArray[oneRingNeighbours[prevN]];
+                beta = acos((e1*e2)/(e1.length() * e2.length()));
+
+                std::cout<<"alpha: "<<alpha * 180.0/3.14159265<<" beta: "<<beta * 180.0/3.14159265<<std::endl;
+                //calculate our final weight of the neighbour vertex
+                weight =((1.0/tan(alpha)) + (1.0/tan(beta))) / 2.0;
+                weight/=(double)numNeighbours;
+                m_laplaceMatrix.coeffRef(i,oneRingNeighbours[j]) = -weight;
+                std::cout<<"weight calculated is "<<-weight<<std::endl;
+                tmpPoint += origMeshVertexArray[oneRingNeighbours[j]] * weight;
+                weightSum+=weight;
+            }
+            std::cout<<"weighted sum "<<weightSum<<std::endl;
             // calculate our final delta and add it to our delta matrix
-            // lets try with his weighting
-            tmpPoint = tmpPoint/numNeighbours;
             delta = origMeshVertexArray[i] - tmpPoint;
+            std::cout<<"delta is "<<delta<<std::endl;
+            std::cout<<std::endl;
             m_deltaMatrix.coeffRef(i,0) = delta.x;
             m_deltaMatrix.coeffRef(i,1) = delta.y;
             m_deltaMatrix.coeffRef(i,2) = delta.z;
