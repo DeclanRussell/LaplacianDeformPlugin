@@ -18,6 +18,7 @@ global string $deformerNodeName;
 global string $handleLocator[];
 global string $shapeNodeName;
 global string $parentNodeName;
+global int $cotWeightEnbl = true;
 
 //get our shape node
 proc string getShapeNodeFromSelection()
@@ -53,7 +54,6 @@ proc string getParent(string $shapeNodeName)
 
 // Set our geomtry and add our deformer node to it
 proc setDeformGeom(){
-    global string $selectedMesh;
     global int $deformInit;
     global int $association[];
     global string $deformedShapeNodeName;
@@ -63,8 +63,6 @@ proc setDeformGeom(){
     //Make sure we have something in our array
     int $arraySize = size($selected);
     if($arraySize>0){
-        // we can only do one model at the moment so we will just pick te firstmodel selected
-        $selectedMesh = $selected[0];
         // create our deformation node
         global int $numSets;
         global string $deformedShapeNodeName;
@@ -109,11 +107,12 @@ proc setLocalCoords(){
     string $localPosString = "";
     global int $association[];
     global string $handleLocator[];
-    global string $selectedMesh;
     global string $shapeNodeName;
     global string $deformerNodeName;
+    global string $deformedShapeNodeName;
+    
         //get our total num of vertex's
-    int $numVerticesA[] = `polyEvaluate -vertex $selectedMesh`;
+    int $numVerticesA[] = `polyEvaluate -vertex $shapeNodeName`;
     int $numVertices = $numVerticesA[0];
     vector $handlePos;
     for($i=0;$i<$numVertices;$i++)
@@ -132,12 +131,11 @@ proc setLocalCoords(){
 
 // function to add sets
 proc selectVerts(){
-    print("button pressed\n");
     //start up paint select
-    global string $selectedMesh;
+    global string $shapeNodeName;
     global int $deformInit;
     if($deformInit==true){
-        doMenuComponentSelection($selectedMesh,"vertex");
+        doMenuComponentSelection($shapeNodeName,"vertex");
         changeSelectMode -vertex;
         artSelectToolScript 4;
         selectMode -component;
@@ -148,18 +146,16 @@ proc selectVerts(){
 }
 
 proc updateAssociation(){
-    global string $selectedMesh;
     global int $association[];
     global string $deformedShapeNodeName;
     global string $deformerNodeName;
     global string $setsList[];
     global int $numSets;
     //get our total num of vertex's
-    int $numVerticesA[] = `polyEvaluate -vertex $selectedMesh`;
+    int $numVerticesA[] = `polyEvaluate -vertex $deformedShapeNodeName`;
     int $numVertices = $numVerticesA[0];
     //clear our association array ready for our update
     clear($association);
-    print($numVertices + "\n");
     
     //Set our associations to be used in out plug in
     //-1 means no associaion
@@ -188,10 +184,9 @@ proc addLocator(){
     global string $deformedShapeNodeName;
     global int $numSets;
     global int $association[];
-    global string $selectedMesh;
     global string $parentNodeName;
     //get our total num of vertex's
-    int $numVerticesA[] = `polyEvaluate -vertex $selectedMesh`;
+    int $numVerticesA[] = `polyEvaluate -vertex $deformedShapeNodeName`;
     int $numVertices = $numVerticesA[0];
     // create Handle for each set, find the handle positions
     vector $handleCentre;
@@ -214,17 +209,16 @@ proc addLocator(){
 	}
 	$handleCentre/=$numVerticesInSet;
 	
-	print($handleCentre);
     // create locators at the middle of each sets, link locator's world matrix to deformer
     // add a locator in the center of our set and connect its tranform attribute to our deformer handleMatrix
 	$tmpPos = $handleCentre;
 	$handleTmp = `spaceLocator`;
 	move ($tmpPos.x) ($tmpPos.y) ($tmpPos.z);
-	performFreezeTransformations(0);
 	parent -relative $handleTmp $parentNodeName;
 	$handleLocator[$i] = $handleTmp[0];
 	//update the local coodinates of our mesh to take into count our handles
 	setLocalCoords();
+	//connect our handle transforms to our plugin
 	connectAttr ($handleLocator[$i] + ".matrix") ($deformerNodeName + ".handleMatrix[" + $i + "]");
 
 }
@@ -264,14 +258,34 @@ proc addHandle(){
     }         
 }
 
+proc enableCotWeights(){
+    global int $cotWeightEnbl;
+    $cotWeightEnbl = true;
+}
+
+proc disableCotWeights(){
+    global int $cotWeightEnbl;
+    $cotWeightEnbl=false;    
+}
+
 // Create our menu
 window -title "Laplacian Mesh Deformer" -width 500 -height 500 -sizeable false;
     //create set our layout
     columnLayout;
-        print("current set " + $currentSetNum);
         //Now lets add our buttons
-        button -label "Set Geomtry" -width 500 -command "setDeformGeom";
+        //Some radio buttons to set what weights we wish to use
+        text -label "Select weighting method";
+        text -label "Cotagent weights are advised as they better preserve the shape of the mesh";
+        $radio = `radioCollection`;
+        $default = `radioButton -label "Cotangent Weights" -onCommand "enableCotWeights"`;
+        radioButton -label "Unbrella Weights" -onCommand "disableCotWeights";
+        //Set our default radio button on
+        radioCollection -edit -select $default $radio;
+        text -label "1. Select your geometry to deform";
+        button -label "2. Set Geomtry" -width 500 -command "setDeformGeom";
+        text -label "Paint on vertex's you wish to be associated with a handle";
         button -label "Paint Vertex Tool" -width 500 -command "selectVerts";
+        text -label "3. Add a handle to the your selected vertices";
         button -label "Add Handle" -width 500 -command "addHandle";
         
 showWindow;

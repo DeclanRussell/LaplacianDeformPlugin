@@ -40,6 +40,7 @@ MObject     LaplacianMeshDeformer::m_handleTransformMatrix;
 MObject		LaplacianMeshDeformer::m_numSets;
 MObject     LaplacianMeshDeformer::m_handlesAdded;
 MObject     LaplacianMeshDeformer::m_recompute;
+MObject     LaplacianMeshDeformer::m_cotWeights;
 
 LaplacianMeshDeformer::LaplacianMeshDeformer() {}
 LaplacianMeshDeformer::~LaplacianMeshDeformer() {}
@@ -117,6 +118,10 @@ MStatus  	LaplacianMeshDeformer::deform(MDataBlock& 	_data, MItGeometry& 	_iter,
         m_deltaMatrix.resize(numVertices,3);
         MPoint delta;
 
+        //if our handles have changed then lets update them
+        MDataHandle weightTypeHandle = _data.inputValue(m_cotWeights, &stat);
+        bool cotWeights = handlesAddedHandle.asBool();
+
         int prevN, nextN;
         MVector e1,e2;
         double alpha,beta,weight,weightSum;
@@ -130,35 +135,43 @@ MStatus  	LaplacianMeshDeformer::deform(MDataBlock& 	_data, MItGeometry& 	_iter,
             //set our weighted sum to 0
             tmpPoint.x = tmpPoint.y = tmpPoint.z = 0.0;
             weightSum = 0.0;
-            for(j=0;j<numNeighbours;j++){
 
-                //calculate out cotangent weights
-                //cotangent weights better preserve the shape of our mesh when deformed
-                //get our previous and next neightbours
-                (j==0) ? prevN = numNeighbours-1 : prevN = j-1;
-                (j==numNeighbours-1) ? nextN = 0 : nextN = j+1;
+            if(cotWeights){
+                MGlobal::displayInfo("Cotangent Weights Selected");
+                for(j=0;j<numNeighbours;j++){
 
-                //calculate our alpha angle
-                e1 = origMeshVertexArray[oneRingNeighbours[j]] - origMeshVertexArray[oneRingNeighbours[nextN]];
-                e2 = origMeshVertexArray[i] - origMeshVertexArray[oneRingNeighbours[nextN]];
-                alpha = acos((e1*e2)/(e1.length() * e2.length()));
+                    //calculate out cotangent weights
+                    //cotangent weights better preserve the shape of our mesh when deformed
+                    //get our previous and next neightbours
+                    (j==0) ? prevN = numNeighbours-1 : prevN = j-1;
+                    (j==numNeighbours-1) ? nextN = 0 : nextN = j+1;
 
-                //calculate our beta angle
-                e1 = origMeshVertexArray[oneRingNeighbours[j]] - origMeshVertexArray[oneRingNeighbours[prevN]];
-                e2 = origMeshVertexArray[i] - origMeshVertexArray[oneRingNeighbours[prevN]];
-                beta = acos((e1*e2)/(e1.length() * e2.length()));
+                    //calculate our alpha angle
+                    e1 = origMeshVertexArray[oneRingNeighbours[j]] - origMeshVertexArray[oneRingNeighbours[nextN]];
+                    e2 = origMeshVertexArray[i] - origMeshVertexArray[oneRingNeighbours[nextN]];
+                    alpha = acos((e1*e2)/(e1.length() * e2.length()));
 
-                //calculate our final weight of the neighbour vertex
-                weight =((1.0/tan(alpha)) + (1.0/tan(beta))) / 2.0;
-                m_laplaceMatrix.coeffRef(i,oneRingNeighbours[j]) = -weight;
-                tmpPoint += origMeshVertexArray[oneRingNeighbours[j]] * weight;
-                weightSum+=weight;
+                    //calculate our beta angle
+                    e1 = origMeshVertexArray[oneRingNeighbours[j]] - origMeshVertexArray[oneRingNeighbours[prevN]];
+                    e2 = origMeshVertexArray[i] - origMeshVertexArray[oneRingNeighbours[prevN]];
+                    beta = acos((e1*e2)/(e1.length() * e2.length()));
+
+                    //calculate our final weight of the neighbour vertex
+                    weight =((1.0/tan(alpha)) + (1.0/tan(beta))) / 2.0;
+                    m_laplaceMatrix.coeffRef(i,oneRingNeighbours[j]) = -weight;
+                    tmpPoint += origMeshVertexArray[oneRingNeighbours[j]] * weight;
+                    weightSum+=weight;
+                }
+                for(j=0;j<numNeighbours;j++){
+                    m_laplaceMatrix.coeffRef(i,oneRingNeighbours[j])/=weightSum;
+                }
+                // calculate our final delta and add it to our delta matrix
+                tmpPoint = tmpPoint/weightSum;
             }
-            for(j=0;j<numNeighbours;j++){
-                m_laplaceMatrix.coeffRef(i,oneRingNeighbours[j])/=weightSum;
+            else{
+                MGlobal::displayInfo("Umbrella Weights Selected");
+
             }
-            // calculate our final delta and add it to our delta matrix
-            tmpPoint = tmpPoint/weightSum;
             delta = origMeshVertexArray[i] - tmpPoint;
 
             m_deltaMatrix.coeffRef(i,0) = delta.x;
@@ -365,6 +378,7 @@ MStatus LaplacianMeshDeformer::initialize()
     m_numSets = numSetsAttr.create("numSets", "ns",MFnNumericData::kInt, 0, &stat);
     m_handlesAdded = handlesAddedAttr.create("handlesAdded","ha",MFnNumericData::kBoolean,false,&stat);
     m_recompute = handlesAddedAttr.create("recompute","rc",MFnNumericData::kBoolean,false,&stat);
+    m_cotWeights = handlesAddedAttr.create("cotWeightEnbl","rc",MFnNumericData::kBoolean,true,&stat);
 
 	// Add the attributes we have created to the node
     stat = addAttribute( m_localCoord );
@@ -378,6 +392,8 @@ MStatus LaplacianMeshDeformer::initialize()
     stat = addAttribute( m_handlesAdded );
     if (!stat) { stat.perror("addAttribute"); return stat;}
     stat = addAttribute( m_recompute );
+    if (!stat) { stat.perror("addAttribute"); return stat;}
+    stat = addAttribute( m_cotWeights );
     if (!stat) { stat.perror("addAttribute"); return stat;}
 
 	// Set up a dependency between the input and the output.  This will cause
