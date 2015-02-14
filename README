@@ -1,0 +1,42 @@
+==============================================
+==========Laplacian Mesh Editing==============
+=============== Maya Plugin ==================
+==============================================
+============== Declan Russell ================
+==============================================
+
+Hello!! Welcome to my laplacian mesh editing 
+plugin where you can deform to your hearts 
+content!
+
+==============================================
+==========Installation Instructions===========
+==============================================
+
+Dependencies:
+
+1. Eigen 3
+2. Maya API files
+
+OS:
+Runs on linux but should also run on mac!
+
+Installation:
+
+1. run qmake
+2. make clean
+3. make
+4. You should now how a load of .so files
+   which is the maya plugin
+5. Use the maya plugin manager to load this
+   plugin into maya
+6. Copy the contents of the MayaScript directory
+   into your local maya scripts directory e.g. 
+   home/maya/2014-x64/sripts
+   This will differ depending on what platform
+   you are on.
+7. Load the PluginScript.mel into your script
+   editor in maya.
+8. Run the script.
+9. You are now ready to deform your geometry
+   Enjoy!!
